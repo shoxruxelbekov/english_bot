@@ -19,13 +19,15 @@ def init_db():
 BOT_TOKEN = "8460732938:AAEXxdsq7uzI9VwgKEIWCAbRUcwMw2crwaw"
 GROQ_KEY = "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"
 ADMIN_ID = 6202785302
+
 groq_client = Groq(api_key=GROQ_KEY)
-bot = Bot(token=BOT_TOKEN) 
+bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 user_states = {}
 user_scores = {}
 user_current_word = {}
 users_db = {}
+
 def ask_ai(prompt):
     response = groq_client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -46,28 +48,28 @@ flashcard_words = {
         {"en": "dog", "uz": "it"},
         {"en": "food", "uz": "ovqat"},
         {"en": "car", "uz": "mashina"},
-        {"en": "hand", "uz": "qo'l"},
-        {"en": "eye", "uz": "ko'z"},
+        {"en": "hand", "uz": "qol"},
+        {"en": "eye", "uz": "koz"},
         {"en": "bread", "uz": "non"},
         {"en": "milk", "uz": "sut"},
         {"en": "egg", "uz": "tuxum"},
         {"en": "tea", "uz": "choy"},
         {"en": "fire", "uz": "olov"},
-        {"en": "rain", "uz": "yomg'ir"},
+        {"en": "rain", "uz": "yomgir"},
         {"en": "bird", "uz": "qush"},
         {"en": "fish", "uz": "baliq"},
     ],
     "medium": [
         {"en": "school", "uz": "maktab"},
-        {"en": "friend", "uz": "do'st"},
-        {"en": "bridge", "uz": "ko'prik"},
+        {"en": "friend", "uz": "dust"},
+        {"en": "bridge", "uz": "koprik"},
         {"en": "market", "uz": "bozor"},
         {"en": "hospital", "uz": "kasalxona"},
-        {"en": "teacher", "uz": "o'qituvchi"},
+        {"en": "teacher", "uz": "oqituvchi"},
         {"en": "student", "uz": "talaba"},
-        {"en": "mountain", "uz": "tog'"},
-        {"en": "forest", "uz": "o'rmon"},
-        {"en": "desert", "uz": "cho'l"},
+        {"en": "mountain", "uz": "tog"},
+        {"en": "forest", "uz": "ormon"},
+        {"en": "desert", "uz": "chol"},
         {"en": "driver", "uz": "haydovchi"},
         {"en": "doctor", "uz": "shifokor"},
         {"en": "village", "uz": "qishloq"},
@@ -86,14 +88,14 @@ flashcard_words = {
         {"en": "government", "uz": "hukumat"},
         {"en": "environment", "uz": "atrof-muhit"},
         {"en": "opportunity", "uz": "imkoniyat"},
-        {"en": "responsible", "uz": "mas'uliyatli"},
+        {"en": "responsible", "uz": "masuliyatli"},
         {"en": "independent", "uz": "mustaqil"},
         {"en": "experience", "uz": "tajriba"},
         {"en": "development", "uz": "rivojlanish"},
         {"en": "achievement", "uz": "yutuq"},
         {"en": "imagination", "uz": "tasavvur"},
-        {"en": "volunteer", "uz": "ko'ngilli"},
-        {"en": "agriculture", "uz": "qishloq xo'jaligi"},
+        {"en": "volunteer", "uz": "kongilli"},
+        {"en": "agriculture", "uz": "qishloq xojaligi"},
         {"en": "technology", "uz": "texnologiya"},
         {"en": "electricity", "uz": "elektr"},
         {"en": "university", "uz": "universitet"},
@@ -252,17 +254,19 @@ async def handle_message(message: types.Message):
         else:
             detected = GoogleTranslator(source='auto', target='en').translate(text)
             if detected.lower() != text.lower():
-            await message.answer(f"Ozbekcha: {text}\nInglizcha: {detected}")
-             tts = gTTS(text=detected, lang='en')
-        else:
-            translated = GoogleTranslator(source='en', target='uz').translate(text)
-            await message.answer(f"Inglizcha: {text}\nOzbekcha: {translated}")
-            tts = gTTS(text=text, lang='en')
+                await message.answer(f"Ozbekcha: {text}\nInglizcha: {detected}")
+                tts = gTTS(text=detected, lang='en')
+            else:
+                translated = GoogleTranslator(source='en', target='uz').translate(text)
+                await message.answer(f"Inglizcha: {text}\nOzbekcha: {translated}")
+                tts = gTTS(text=text, lang='en')
             audio_file = "audio.mp3"
             tts.save(audio_file)
             await message.answer_voice(types.FSInputFile(audio_file))
-            os.remove(audio_file)    except Exception as e:
+            os.remove(audio_file)
+    except Exception as e:
         await message.answer(f"Xatolik: {str(e)}")
+
 async def main():
     init_db()
     await bot.set_my_commands([
