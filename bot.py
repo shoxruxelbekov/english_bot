@@ -251,7 +251,7 @@ async def handle_message(message: types.Message):
             await message.answer(f"{text.upper()} haqida:\n\n{result}")
         else:
             detected = GoogleTranslator(source='auto', target='en').translate(text)
-            if detected.lower() != text.lower():
+        if detected.lower() != text.lower():
             await message.answer(f"Ozbekcha: {text}\nInglizcha: {detected}")
              tts = gTTS(text=detected, lang='en')
         else:
