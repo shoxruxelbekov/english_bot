@@ -4,6 +4,7 @@ import os
 import random
 import uuid
 import json
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from gtts import gTTS
@@ -14,6 +15,8 @@ from groq import Groq
 BOT_TOKEN = "8460732938:AAEXxdsq7uzI9VwgKEIWCAbRUcwMw2crwaw"
 GROQ_KEY = "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"
 ADMIN_ID = 6202785302
+CHANNEL_ID = "@DailyIdiomsUz"
+GROUP_LINK = "https://t.me/enlish_helper_bot_group"
 
 # ==================== DATABASE ====================
 def init_db():
@@ -40,12 +43,11 @@ def get_all_users():
     conn.close()
     return users
 
-# ==================== BOT SOZLASH ====================
+# ==================== BOT ====================
 groq_client = Groq(api_key=GROQ_KEY)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# ==================== XOTIRA ====================
 user_states = {}
 user_scores = {}
 user_current_word = {}
@@ -53,6 +55,7 @@ active_duels = {}
 user_duel = {}
 waiting_queue = []
 learn_sessions = {}
+duel_timers = {}
 
 # ==================== AI ====================
 def ask_ai(prompt):
@@ -66,7 +69,7 @@ def ask_ai(prompt):
 def get_duel_words_ai(topic):
     prompt = (
         f"Give me exactly 10 English words about '{topic}' for Uzbek learners. "
-        f"Return ONLY a JSON array like this, nothing else: "
+        f"Return ONLY a JSON array, nothing else: "
         f'[{{"en":"word1","uz":"tarjima1"}},{{"en":"word2","uz":"tarjima2"}}]'
     )
     result = ask_ai(prompt)
@@ -76,17 +79,27 @@ def get_duel_words_ai(topic):
         return json.loads(result[start:end])
     except:
         return [
-            {"en": "apple", "uz": "olma"},
-            {"en": "book", "uz": "kitob"},
-            {"en": "water", "uz": "suv"},
-            {"en": "house", "uz": "uy"},
-            {"en": "sun", "uz": "quyosh"},
-            {"en": "cat", "uz": "mushuk"},
-            {"en": "dog", "uz": "it"},
-            {"en": "bird", "uz": "qush"},
-            {"en": "fish", "uz": "baliq"},
-            {"en": "car", "uz": "mashina"},
+            {"en": "apple", "uz": "olma"}, {"en": "book", "uz": "kitob"},
+            {"en": "water", "uz": "suv"}, {"en": "house", "uz": "uy"},
+            {"en": "sun", "uz": "quyosh"}, {"en": "cat", "uz": "mushuk"},
+            {"en": "dog", "uz": "it"}, {"en": "bird", "uz": "qush"},
+            {"en": "fish", "uz": "baliq"}, {"en": "car", "uz": "mashina"},
         ]
+
+def get_flashcard_word_ai(level):
+    level_desc = {"easy": "A1 very basic", "medium": "A2-B1 intermediate", "hard": "B2-C1 advanced"}
+    prompt = (
+        f"Give me 1 English word for Uzbek learners at {level_desc.get(level, 'basic')} level. "
+        f"Return ONLY JSON, nothing else: "
+        f'{{"en":"word","uz":"tarjima"}}'
+    )
+    result = ask_ai(prompt)
+    try:
+        start = result.find('{')
+        end = result.rfind('}') + 1
+        return json.loads(result[start:end])
+    except:
+        return {"en": "apple", "uz": "olma"}
 
 def get_learn_questions_ai(topic, level):
     level_desc = {"beginner": "A1-A2 basic", "intermediate": "B1-B2 medium", "advanced": "C1-C2 advanced"}
@@ -105,45 +118,13 @@ def get_learn_questions_ai(topic, level):
     except:
         return None
 
-# ==================== FLASHCARD SO'ZLARI ====================
-flashcard_words = {
-    "easy": [
-        {"en": "apple", "uz": "olma"}, {"en": "book", "uz": "kitob"},
-        {"en": "water", "uz": "suv"}, {"en": "house", "uz": "uy"},
-        {"en": "sun", "uz": "quyosh"}, {"en": "moon", "uz": "oy"},
-        {"en": "cat", "uz": "mushuk"}, {"en": "dog", "uz": "it"},
-        {"en": "food", "uz": "ovqat"}, {"en": "car", "uz": "mashina"},
-        {"en": "hand", "uz": "qol"}, {"en": "eye", "uz": "koz"},
-        {"en": "bread", "uz": "non"}, {"en": "milk", "uz": "sut"},
-        {"en": "egg", "uz": "tuxum"}, {"en": "tea", "uz": "choy"},
-        {"en": "fire", "uz": "olov"}, {"en": "rain", "uz": "yomgir"},
-        {"en": "bird", "uz": "qush"}, {"en": "fish", "uz": "baliq"},
-    ],
-    "medium": [
-        {"en": "school", "uz": "maktab"}, {"en": "friend", "uz": "dust"},
-        {"en": "bridge", "uz": "koprik"}, {"en": "market", "uz": "bozor"},
-        {"en": "hospital", "uz": "kasalxona"}, {"en": "teacher", "uz": "oqituvchi"},
-        {"en": "student", "uz": "talaba"}, {"en": "mountain", "uz": "tog"},
-        {"en": "forest", "uz": "ormon"}, {"en": "desert", "uz": "chol"},
-        {"en": "driver", "uz": "haydovchi"}, {"en": "doctor", "uz": "shifokor"},
-        {"en": "village", "uz": "qishloq"}, {"en": "window", "uz": "deraza"},
-        {"en": "flower", "uz": "gul"}, {"en": "chicken", "uz": "tovuq"},
-        {"en": "finger", "uz": "barmoq"}, {"en": "sugar", "uz": "shakar"},
-        {"en": "cloud", "uz": "bulut"}, {"en": "river", "uz": "daryo"},
-    ],
-    "hard": [
-        {"en": "beautiful", "uz": "chiroyli"}, {"en": "difficult", "uz": "qiyin"},
-        {"en": "comfortable", "uz": "qulay"}, {"en": "government", "uz": "hukumat"},
-        {"en": "environment", "uz": "atrof-muhit"}, {"en": "opportunity", "uz": "imkoniyat"},
-        {"en": "responsible", "uz": "masuliyatli"}, {"en": "independent", "uz": "mustaqil"},
-        {"en": "experience", "uz": "tajriba"}, {"en": "development", "uz": "rivojlanish"},
-        {"en": "achievement", "uz": "yutuq"}, {"en": "imagination", "uz": "tasavvur"},
-        {"en": "volunteer", "uz": "kongilli"}, {"en": "agriculture", "uz": "qishloq xojaligi"},
-        {"en": "technology", "uz": "texnologiya"}, {"en": "electricity", "uz": "elektr"},
-        {"en": "university", "uz": "universitet"}, {"en": "competition", "uz": "musobaqa"},
-        {"en": "celebration", "uz": "bayram"}, {"en": "profession", "uz": "kasb"},
-    ]
-}
+def get_word_of_day_ai():
+    today = datetime.now().strftime("%Y-%m-%d")
+    prompt = (
+        f"Today is {today}. Give me one unique English word for Uzbek learners for this specific date. "
+        f"Format:\nWord: ...\nTranslation (Uzbek): ...\nExample sentence: ...\nPronunciation tip: ..."
+    )
+    return ask_ai(prompt)
 
 # ==================== /start ====================
 @dp.message(Command("start"))
@@ -163,10 +144,11 @@ async def start(message: types.Message):
         "/translate - Tarjima + audio\n"
         "/topic - AI mavzu malumoti\n"
         "/wordofday - Kunlik yangi soz\n"
-        "/flashcard - Soz oyini\n"
+        "/flashcard - Soz oyini (AI)\n"
         "/duel - Dust bilan bellashuv\n"
         "/learn - Ingliz tili darslari\n"
-        "/help - Yordam"
+        "/help - Yordam\n\n"
+        f"Guruhimizga qoshiling: {GROUP_LINK}"
     )
 
 # ==================== /help ====================
@@ -177,9 +159,10 @@ async def help_cmd(message: types.Message):
         "/translate - Tarjima + audio\n"
         "/topic - AI mavzu malumoti\n"
         "/wordofday - Kunlik yangi soz\n"
-        "/flashcard - Soz oyini (3 daraja)\n"
-        "/duel - Dust bilan bellashuv (AI sozlar)\n"
-        "/learn - Ingliz tili darslari + test\n"
+        "/flashcard - Soz oyini (AI)\n"
+        "/duel - Dust bilan bellashuv\n"
+        "/learn - Ingliz tili darslari + test\n\n"
+        f"Guruhimiz: {GROUP_LINK}"
     )
 
 # ==================== /translate ====================
@@ -199,15 +182,13 @@ async def topic_start(message: types.Message):
 async def word_of_day(message: types.Message):
     await message.answer("Kunlik soz tayyorlanmoqda...")
     try:
-        result = ask_ai(
-            "Give me one interesting English word for Uzbek learners. "
-            "Format:\nWord: ...\nTranslation (Uzbek): ...\nExample sentence: ...\nPronunciation tip: ..."
-        )
-        await message.answer(f"Bugungi soz:\n\n{result}")
+        result = get_word_of_day_ai()
+        today = datetime.now().strftime("%d.%m.%Y")
+        await message.answer(f"Bugungi soz ({today}):\n\n{result}")
     except Exception as e:
         await message.answer(f"Xatolik: {str(e)}")
 
-# ==================== /users (admin) ====================
+# ==================== /users ====================
 @dp.message(Command("users"))
 async def show_users(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -255,7 +236,7 @@ async def learn_start(message: types.Message):
 @dp.message(Command("duel"))
 async def duel_start(message: types.Message):
     await message.answer(
-        "Qanday o'ynashni xohlaysiz?",
+        "Qanday oynashni xohlaysiz?",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
             [
                 types.InlineKeyboardButton(text="Dust bilan (havola)", callback_data="duel_mode_friend"),
@@ -266,30 +247,120 @@ async def duel_start(message: types.Message):
         ])
     )
 
-# ==================== DUEL HELPER ====================
-async def start_duel_topic_selection(message_or_callback, user_id):
-    kb = types.InlineKeyboardMarkup(inline_keyboard=[
-        [
-            types.InlineKeyboardButton(text="Hayvonlar", callback_data="dueltopic_hayvonlar"),
-            types.InlineKeyboardButton(text="Ovqat", callback_data="dueltopic_ovqat"),
-        ],
-        [
-            types.InlineKeyboardButton(text="Sport", callback_data="dueltopic_sport"),
-            types.InlineKeyboardButton(text="Tabiat", callback_data="dueltopic_tabiat"),
-        ],
-        [
-            types.InlineKeyboardButton(text="Kasb-hunar", callback_data="dueltopic_kasb-hunar"),
-            types.InlineKeyboardButton(text="Texnologiya", callback_data="dueltopic_texnologiya"),
-        ],
-        [
-            types.InlineKeyboardButton(text="Oila", callback_data="dueltopic_oila"),
-            types.InlineKeyboardButton(text="Shahar", callback_data="dueltopic_shahar"),
-        ],
-    ])
-    if hasattr(message_or_callback, 'message'):
-        await message_or_callback.message.answer("Mavzu tanlang:", reply_markup=kb)
+# ==================== DUEL TIMER ====================
+async def duel_timeout(duel_id, word_index):
+    await asyncio.sleep(20)
+    if duel_id not in active_duels:
+        return
+    duel = active_duels[duel_id]
+    if duel["current_word"] != word_index or duel["status"] != "active":
+        return
+
+    word = duel["words"][word_index]
+    correct = word["uz"]
+
+    if not duel["p1_answered"]:
+        duel["p1_answered"] = True
+        try:
+            await bot.send_message(duel["player1_id"], f"Vaqt tugadi! Togri javob: {correct}")
+        except:
+            pass
+
+    if not duel["p2_answered"]:
+        duel["p2_answered"] = True
+        try:
+            await bot.send_message(duel["player2_id"], f"Vaqt tugadi! Togri javob: {correct}")
+        except:
+            pass
+
+    duel["current_word"] += 1
+    duel["p1_answered"] = False
+    duel["p2_answered"] = False
+
+    if duel["current_word"] >= len(duel["words"]):
+        await finish_duel(duel_id)
     else:
-        await message_or_callback.answer("Mavzu tanlang:", reply_markup=kb)
+        next_word = duel["words"][duel["current_word"]]
+        num = duel["current_word"] + 1
+        try:
+            await bot.send_message(duel["player1_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
+            await bot.send_message(duel["player2_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
+        except:
+            pass
+        asyncio.create_task(duel_timeout(duel_id, duel["current_word"]))
+
+async def finish_duel(duel_id):
+    if duel_id not in active_duels:
+        return
+    duel = active_duels[duel_id]
+    s1 = duel["score1"]
+    s2 = duel["score2"]
+    p1 = duel["player1_name"]
+    p2 = duel["player2_name"] or "Raqib"
+
+    if s1 > s2:
+        result = f"Golib: {p1}!\n{p1}: {s1} | {p2}: {s2}"
+        winner = p1
+    elif s2 > s1:
+        result = f"Golib: {p2}!\n{p1}: {s1} | {p2}: {s2}"
+        winner = p2
+    else:
+        result = f"Durang!\nIkkalangiz: {s1}"
+        winner = None
+
+    try:
+        await bot.send_message(duel["player1_id"], f"Oyin tugadi!\n\n{result}")
+        await bot.send_message(duel["player2_id"], f"Oyin tugadi!\n\n{result}")
+    except:
+        pass
+
+    # Kanalga post
+    try:
+        bot_info = await bot.get_me()
+        channel_text = (
+            f"Yangi golib!\n\n"
+            f"{p1} vs {p2}\n"
+            f"Mavzu: {duel['topic']}\n"
+            f"Natija: {p1}: {s1} | {p2}: {s2}\n"
+        )
+        if winner:
+            channel_text += f"Golib: {winner}!\n\n"
+        else:
+            channel_text += "Natija: Durang!\n\n"
+        channel_text += f"Sen ham sinab kor: @{bot_info.username}"
+        await bot.send_message(CHANNEL_ID, channel_text)
+    except:
+        pass
+
+    p1_id = duel["player1_id"]
+    p2_id = duel["player2_id"]
+    del active_duels[duel_id]
+    if p1_id and p1_id in user_duel:
+        del user_duel[p1_id]
+    if p2_id and p2_id in user_duel:
+        del user_duel[p2_id]
+
+async def launch_duel(duel_id, player2_id, player2_name, message):
+    duel = active_duels[duel_id]
+    duel["player2_id"] = player2_id
+    duel["player2_name"] = player2_name
+    duel["status"] = "active"
+    user_duel[player2_id] = duel_id
+    word = duel["words"][0]
+    await bot.send_message(
+        duel["player1_id"],
+        f"{player2_name} oyinga qoshildi!\n\n"
+        f"Oyin boshlanadi! Mavzu: {duel['topic']}\n\n"
+        f"1-soz: {word['en']}\n"
+        f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
+    )
+    await message.answer(
+        f"{duel['player1_name']} bilan oyin boshlanadi!\n"
+        f"Mavzu: {duel['topic']}\n\n"
+        f"1-soz: {word['en']}\n"
+        f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
+    )
+    asyncio.create_task(duel_timeout(duel_id, 0))
 
 async def join_duel_by_link(message: types.Message, duel_id: str):
     user_id = message.from_user.id
@@ -305,40 +376,18 @@ async def join_duel_by_link(message: types.Message, duel_id: str):
         return
     await launch_duel(duel_id, user_id, message.from_user.first_name, message)
 
-async def launch_duel(duel_id, player2_id, player2_name, message):
-    duel = active_duels[duel_id]
-    duel["player2_id"] = player2_id
-    duel["player2_name"] = player2_name
-    duel["status"] = "active"
-    user_duel[player2_id] = duel_id
-    word = duel["words"][0]
-    await bot.send_message(
-        duel["player1_id"],
-        f"{player2_name} oyinga qoshildi!\n\n"
-        f"Oyin boshlanadi! Mavzu: {duel['topic']}\n\n"
-        f"1-soz: {word['en']}\n"
-        f"Ozbekcha tarjimasini yozing:"
-    )
-    await message.answer(
-        f"{duel['player1_name']} bilan oyin boshlanadi!\n"
-        f"Mavzu: {duel['topic']}\n\n"
-        f"1-soz: {word['en']}\n"
-        f"Ozbekcha tarjimasini yozing:"
-    )
-
 # ==================== CALLBACKS ====================
 @dp.callback_query()
 async def handle_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    # --- FLASHCARD ---
+    # FLASHCARD
     if data.startswith("level_"):
         level = data.replace("level_", "")
         level_names = {"easy": "Oson", "medium": "Orta", "hard": "Qiyin"}
-        last_word = user_current_word.get(user_id)
-        available_words = [w for w in flashcard_words[level] if w != last_word]
-        word = random.choice(available_words)
+        await callback.message.answer("AI soz tayyorlanmoqda...")
+        word = get_flashcard_word_ai(level)
         user_current_word[user_id] = word
         user_states[user_id] = f"waiting_flashcard_{level}"
         if user_id not in user_scores:
@@ -349,47 +398,32 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Ozbekcha tarjimasini yozing:"
         )
 
-    # --- DUEL MODE ---
+    # DUEL MODE
     elif data == "duel_mode_friend":
         user_states[user_id] = "duel_friend"
-        await start_duel_topic_selection(callback, user_id)
+        await show_duel_topics(callback.message)
 
     elif data == "duel_mode_search":
         if user_id in waiting_queue:
             await callback.message.answer("Siz allaqachon qidiryapsiz, kuting...")
         elif waiting_queue:
             opponent_id = waiting_queue.pop(0)
-            user_states[user_id] = "duel_search"
-            await callback.message.answer("Raqib topildi! Mavzu tanlang:",
-                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                    [
-                        types.InlineKeyboardButton(text="Hayvonlar", callback_data=f"duelsearch_hayvonlar_{opponent_id}"),
-                        types.InlineKeyboardButton(text="Ovqat", callback_data=f"duelsearch_ovqat_{opponent_id}"),
-                    ],
-                    [
-                        types.InlineKeyboardButton(text="Sport", callback_data=f"duelsearch_sport_{opponent_id}"),
-                        types.InlineKeyboardButton(text="Tabiat", callback_data=f"duelsearch_tabiat_{opponent_id}"),
-                    ],
-                    [
-                        types.InlineKeyboardButton(text="Kasb-hunar", callback_data=f"duelsearch_kasb-hunar_{opponent_id}"),
-                        types.InlineKeyboardButton(text="Texnologiya", callback_data=f"duelsearch_texnologiya_{opponent_id}"),
-                    ],
-                ])
-            )
+            await callback.message.answer("Raqib topildi! Mavzu tanlang:")
+            await show_duel_topics_search(callback.message, opponent_id)
         else:
             waiting_queue.append(user_id)
             await callback.message.answer(
                 "Raqib qidirilmoqda...\n\n"
-                "Boshqa birov ham raqib qidirganda, oyin boshlanadi!\n"
-                "Havolani guruhga tashlang: do'stlaringizdan biri /duel bosib 'Raqib qidirish' tanlasa birlashtiradi!"
+                f"Guruhimizga havola tashlang, kimdir /duel bosib 'Raqib qidirish' tanlasa birlashtiradi!\n\n"
+                f"Guruh: {GROUP_LINK}"
             )
 
-    # --- DUEL SEARCH TOPIC ---
+    # DUEL SEARCH TOPIC
     elif data.startswith("duelsearch_"):
         parts = data.replace("duelsearch_", "").rsplit("_", 1)
         topic = parts[0]
         opponent_id = int(parts[1])
-        await callback.message.answer(f"So'zlar tayyorlanmoqda... (AI {topic} mavzusidan so'z olmoqda)")
+        await callback.message.answer(f"AI {topic} mavzusidan sozlar tayyorlanmoqda...")
         words = get_duel_words_ai(topic)
         random.shuffle(words)
         duel_id = str(uuid.uuid4())[:8]
@@ -414,18 +448,19 @@ async def handle_callback(callback: types.CallbackQuery):
             opponent_id,
             f"Raqib topildi! Mavzu: {topic}\n\n"
             f"1-soz: {word['en']}\n"
-            f"Ozbekcha tarjimasini yozing:"
+            f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
         )
         await callback.message.answer(
             f"Oyin boshlanadi! Mavzu: {topic}\n\n"
             f"1-soz: {word['en']}\n"
-            f"Ozbekcha tarjimasini yozing:"
+            f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
         )
+        asyncio.create_task(duel_timeout(duel_id, 0))
 
-    # --- DUEL TOPIC (friend) ---
+    # DUEL TOPIC (friend)
     elif data.startswith("dueltopic_"):
         topic = data.replace("dueltopic_", "")
-        await callback.message.answer(f"So'zlar tayyorlanmoqda... (AI {topic} mavzusidan so'z olmoqda)")
+        await callback.message.answer(f"AI {topic} mavzusidan sozlar tayyorlanmoqda...")
         words = get_duel_words_ai(topic)
         random.shuffle(words)
         duel_id = str(uuid.uuid4())[:8]
@@ -450,10 +485,11 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Mavzu: {topic}\n\n"
             f"Dustingizga yoki guruhga quyidagi havolani yuboring:\n\n"
             f"{link}\n\n"
+            f"Guruhimiz: {GROUP_LINK}\n\n"
             f"Dustingiz qoshilishini kuting..."
         )
 
-    # --- LEARN LEVEL ---
+    # LEARN LEVEL
     elif data.startswith("learn_level_"):
         level = data.replace("learn_level_", "")
         level_names = {"beginner": "Boshlangich", "intermediate": "Orta", "advanced": "Yuqori"}
@@ -473,17 +509,37 @@ async def handle_callback(callback: types.CallbackQuery):
                     types.InlineKeyboardButton(text="Articles (a/an/the)", callback_data="learn_topic_articles"),
                     types.InlineKeyboardButton(text="Modal Verbs", callback_data="learn_topic_modal_verbs"),
                 ],
+                [
+                    types.InlineKeyboardButton(text="Conditionals", callback_data="learn_topic_conditionals"),
+                    types.InlineKeyboardButton(text="Passive Voice", callback_data="learn_topic_passive_voice"),
+                ],
+                [
+                    types.InlineKeyboardButton(text="Adjectives", callback_data="learn_topic_adjectives"),
+                    types.InlineKeyboardButton(text="Adverbs", callback_data="learn_topic_adverbs"),
+                ],
+                [
+                    types.InlineKeyboardButton(text="Conjunctions", callback_data="learn_topic_conjunctions"),
+                    types.InlineKeyboardButton(text="Questions", callback_data="learn_topic_questions"),
+                ],
+                [
+                    types.InlineKeyboardButton(text="Pronouns", callback_data="learn_topic_pronouns"),
+                    types.InlineKeyboardButton(text="Countable/Uncountable", callback_data="learn_topic_countable"),
+                ],
+                [
+                    types.InlineKeyboardButton(text="Comparatives", callback_data="learn_topic_comparatives"),
+                    types.InlineKeyboardButton(text="Idioms", callback_data="learn_topic_idioms"),
+                ],
             ])
         )
 
-    # --- LEARN TOPIC ---
+    # LEARN TOPIC
     elif data.startswith("learn_topic_"):
         topic = data.replace("learn_topic_", "").replace("_", " ")
         if user_id not in learn_sessions:
             await callback.message.answer("Iltimos qaytadan /learn bosing!")
             return
         level = learn_sessions[user_id]["level"]
-        await callback.message.answer(f"Savollar tayyorlanmoqda... ({topic} mavzusi)")
+        await callback.message.answer(f"Savollar tayyorlanmoqda... ({topic})")
         questions = get_learn_questions_ai(topic, level)
         if not questions:
             await callback.message.answer("Xatolik! Qaytadan urinib koring.")
@@ -497,7 +553,7 @@ async def handle_callback(callback: types.CallbackQuery):
         }
         await send_learn_question(callback.message, user_id)
 
-    # --- LEARN ANSWER ---
+    # LEARN ANSWER
     elif data.startswith("learn_answer_"):
         answer = data.replace("learn_answer_", "")
         if user_id not in learn_sessions or "questions" not in learn_sessions[user_id]:
@@ -508,7 +564,7 @@ async def handle_callback(callback: types.CallbackQuery):
         correct = current_q["correct"]
         if answer == correct:
             session["score"] += 1
-            await callback.message.answer(f"Togri! \n\n{current_q['explanation']}")
+            await callback.message.answer(f"Togri!\n\n{current_q['explanation']}")
         else:
             await callback.message.answer(f"Notogri!\nTogri javob: {correct}\n\n{current_q['explanation']}")
         session["current"] += 1
@@ -520,7 +576,7 @@ async def handle_callback(callback: types.CallbackQuery):
             elif score >= total * 0.6:
                 result_text = f"Yaxshi! {score}/{total} - Davom eting!"
             else:
-                result_text = f"{score}/{total} - Ko'proq mashq qiling!"
+                result_text = f"{score}/{total} - Koproq mashq qiling!"
             await callback.message.answer(
                 f"Test tugadi!\n\n{result_text}\n\n"
                 f"Yana sinash uchun /learn bosing!"
@@ -530,6 +586,60 @@ async def handle_callback(callback: types.CallbackQuery):
             await send_learn_question(callback.message, user_id)
 
     await callback.answer()
+
+async def show_duel_topics(message):
+    await message.answer(
+        "Mavzu tanlang:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="Hayvonlar", callback_data="dueltopic_hayvonlar"),
+                types.InlineKeyboardButton(text="Ovqat", callback_data="dueltopic_ovqat"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Sport", callback_data="dueltopic_sport"),
+                types.InlineKeyboardButton(text="Tabiat", callback_data="dueltopic_tabiat"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Kasb-hunar", callback_data="dueltopic_kasb-hunar"),
+                types.InlineKeyboardButton(text="Texnologiya", callback_data="dueltopic_texnologiya"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Oila", callback_data="dueltopic_oila"),
+                types.InlineKeyboardButton(text="Shahar", callback_data="dueltopic_shahar"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Maktab", callback_data="dueltopic_maktab"),
+                types.InlineKeyboardButton(text="Sayohat", callback_data="dueltopic_sayohat"),
+            ],
+        ])
+    )
+
+async def show_duel_topics_search(message, opponent_id):
+    await message.answer(
+        "Mavzu tanlang:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="Hayvonlar", callback_data=f"duelsearch_hayvonlar_{opponent_id}"),
+                types.InlineKeyboardButton(text="Ovqat", callback_data=f"duelsearch_ovqat_{opponent_id}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Sport", callback_data=f"duelsearch_sport_{opponent_id}"),
+                types.InlineKeyboardButton(text="Tabiat", callback_data=f"duelsearch_tabiat_{opponent_id}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Kasb-hunar", callback_data=f"duelsearch_kasb-hunar_{opponent_id}"),
+                types.InlineKeyboardButton(text="Texnologiya", callback_data=f"duelsearch_texnologiya_{opponent_id}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Oila", callback_data=f"duelsearch_oila_{opponent_id}"),
+                types.InlineKeyboardButton(text="Shahar", callback_data=f"duelsearch_shahar_{opponent_id}"),
+            ],
+            [
+                types.InlineKeyboardButton(text="Maktab", callback_data=f"duelsearch_maktab_{opponent_id}"),
+                types.InlineKeyboardButton(text="Sayohat", callback_data=f"duelsearch_sayohat_{opponent_id}"),
+            ],
+        ])
+    )
 
 async def send_learn_question(message, user_id):
     session = learn_sessions[user_id]
@@ -554,7 +664,7 @@ async def handle_message(message: types.Message):
     text = message.text
     user_id = message.from_user.id
     try:
-        # DUEL O'YIN
+        # DUEL
         if user_id in user_duel and active_duels.get(user_duel[user_id], {}).get("status") == "active":
             duel_id = user_duel[user_id]
             duel = active_duels[duel_id]
@@ -589,30 +699,13 @@ async def handle_message(message: types.Message):
                 duel["p2_answered"] = False
 
                 if duel["current_word"] >= len(duel["words"]):
-                    s1 = duel["score1"]
-                    s2 = duel["score2"]
-                    p1 = duel["player1_name"]
-                    p2 = duel["player2_name"]
-                    if s1 > s2:
-                        result = f"Golib: {p1}!\n{p1}: {s1} | {p2}: {s2}"
-                    elif s2 > s1:
-                        result = f"Golib: {p2}!\n{p1}: {s1} | {p2}: {s2}"
-                    else:
-                        result = f"Durang!\nIkkalangiz: {s1}"
-                    await bot.send_message(duel["player1_id"], f"Oyin tugadi!\n\n{result}")
-                    await bot.send_message(duel["player2_id"], f"Oyin tugadi!\n\n{result}")
-                    p1_id = duel["player1_id"]
-                    p2_id = duel["player2_id"]
-                    del active_duels[duel_id]
-                    if p1_id in user_duel:
-                        del user_duel[p1_id]
-                    if p2_id in user_duel:
-                        del user_duel[p2_id]
+                    await finish_duel(duel_id)
                 else:
                     next_word = duel["words"][duel["current_word"]]
                     num = duel["current_word"] + 1
-                    await bot.send_message(duel["player1_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:")
-                    await bot.send_message(duel["player2_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:")
+                    await bot.send_message(duel["player1_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
+                    await bot.send_message(duel["player2_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
+                    asyncio.create_task(duel_timeout(duel_id, duel["current_word"]))
 
         # FLASHCARD
         elif user_states.get(user_id, "").startswith("waiting_flashcard"):
@@ -674,7 +767,7 @@ async def main():
         types.BotCommand(command="translate", description="Tarjima + audio"),
         types.BotCommand(command="topic", description="AI mavzu malumoti"),
         types.BotCommand(command="wordofday", description="Kunlik yangi soz"),
-        types.BotCommand(command="flashcard", description="Soz oyini"),
+        types.BotCommand(command="flashcard", description="Soz oyini (AI)"),
         types.BotCommand(command="duel", description="Dust bilan bellashuv"),
         types.BotCommand(command="learn", description="Ingliz tili darslari"),
         types.BotCommand(command="help", description="Yordam"),
