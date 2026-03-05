@@ -43,14 +43,6 @@ def get_all_users():
     conn.close()
     return users
 
-def get_users_count():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('SELECT COUNT(*) FROM users')
-    count = c.fetchone()[0]
-    conn.close()
-    return count
-
 # ==================== BOT ====================
 groq_client = Groq(api_key=GROQ_KEY)
 bot = Bot(token=BOT_TOKEN)
@@ -63,6 +55,7 @@ active_duels = {}
 user_duel = {}
 waiting_queue = []
 learn_sessions = {}
+voice_texts = {}
 
 # ==================== AI ====================
 def ask_ai(prompt):
@@ -153,10 +146,8 @@ async def start(message: types.Message):
 
     save_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
     name = message.from_user.first_name
-    count = get_users_count()
     await message.answer(
         f"Salom, {name}!\n\n"
-        f"Bizda {count} ta foydalanuvchi bor!\n\n"
         "Men ingliz tili organishga yordam beraman!\n\n"
         "Imkoniyatlarim:\n"
         "/translate - Tarjima + audio\n"
@@ -205,10 +196,12 @@ async def handle_voice(message: types.Message):
         os.remove(file_path)
 
         if text:
-            translated = GoogleTranslator(source='en', target='uz').translate(text)
+            voice_texts[message.from_user.id] = text
             await message.answer(
-                f"Inglizcha matni:\n{text}\n\n"
-                f"Ozbekcha tarjimasi:\n{translated}"
+                f"Inglizcha matni:\n{text}",
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text="Tarjimasi", callback_data=f"voice_translate_{message.from_user.id}")]
+                ])
             )
         else:
             await message.answer("Ovoz aniqlanmadi, qaytadan urinib koring!")
@@ -289,12 +282,8 @@ async def duel_start(message: types.Message):
     await message.answer(
         "Qanday oynashni xohlaysiz?",
         reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-            [
-                types.InlineKeyboardButton(text="Dust bilan (havola)", callback_data="duel_mode_friend"),
-            ],
-            [
-                types.InlineKeyboardButton(text="Raqib qidirish", callback_data="duel_mode_search"),
-            ]
+            [types.InlineKeyboardButton(text="Dust bilan (havola)", callback_data="duel_mode_friend")],
+            [types.InlineKeyboardButton(text="Raqib qidirish", callback_data="duel_mode_search")],
         ])
     )
 
@@ -306,28 +295,23 @@ async def duel_timeout(duel_id, word_index):
     duel = active_duels[duel_id]
     if duel["current_word"] != word_index or duel["status"] != "active":
         return
-
     word = duel["words"][word_index]
     correct = word["uz"]
-
     if not duel["p1_answered"]:
         duel["p1_answered"] = True
         try:
             await bot.send_message(duel["player1_id"], f"Vaqt tugadi! Togri javob: {correct}")
         except:
             pass
-
     if not duel["p2_answered"]:
         duel["p2_answered"] = True
         try:
             await bot.send_message(duel["player2_id"], f"Vaqt tugadi! Togri javob: {correct}")
         except:
             pass
-
     duel["current_word"] += 1
     duel["p1_answered"] = False
     duel["p2_answered"] = False
-
     if duel["current_word"] >= len(duel["words"]):
         await finish_duel(duel_id)
     else:
@@ -348,7 +332,6 @@ async def finish_duel(duel_id):
     s2 = duel["score2"]
     p1 = duel["player1_name"]
     p2 = duel["player2_name"] or "Raqib"
-
     if s1 > s2:
         result = f"Golib: {p1}!\n{p1}: {s1} | {p2}: {s2}"
         winner = p1
@@ -358,30 +341,19 @@ async def finish_duel(duel_id):
     else:
         result = f"Durang!\nIkkalangiz: {s1}"
         winner = None
-
     try:
         await bot.send_message(duel["player1_id"], f"Oyin tugadi!\n\n{result}")
         await bot.send_message(duel["player2_id"], f"Oyin tugadi!\n\n{result}")
     except:
         pass
-
     try:
         bot_info = await bot.get_me()
-        channel_text = (
-            f"Yangi golib!\n\n"
-            f"{p1} vs {p2}\n"
-            f"Mavzu: {duel['topic']}\n"
-            f"Natija: {p1}: {s1} | {p2}: {s2}\n"
-        )
-        if winner:
-            channel_text += f"Golib: {winner}!\n\n"
-        else:
-            channel_text += "Natija: Durang!\n\n"
+        channel_text = f"Yangi golib!\n\n{p1} vs {p2}\nMavzu: {duel['topic']}\nNatija: {p1}: {s1} | {p2}: {s2}\n"
+        channel_text += f"Golib: {winner}!\n\n" if winner else "Natija: Durang!\n\n"
         channel_text += f"Sen ham sinab kor: @{bot_info.username}"
         await bot.send_message(CHANNEL_ID, channel_text)
     except:
         pass
-
     p1_id = duel["player1_id"]
     p2_id = duel["player2_id"]
     del active_duels[duel_id]
@@ -399,16 +371,10 @@ async def launch_duel(duel_id, player2_id, player2_name, message):
     word = duel["words"][0]
     await bot.send_message(
         duel["player1_id"],
-        f"{player2_name} oyinga qoshildi!\n\n"
-        f"Oyin boshlanadi! Mavzu: {duel['topic']}\n\n"
-        f"1-soz: {word['en']}\n"
-        f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
+        f"{player2_name} oyinga qoshildi!\n\nOyin boshlanadi! Mavzu: {duel['topic']}\n\n1-soz: {word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)"
     )
     await message.answer(
-        f"{duel['player1_name']} bilan oyin boshlanadi!\n"
-        f"Mavzu: {duel['topic']}\n\n"
-        f"1-soz: {word['en']}\n"
-        f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
+        f"{duel['player1_name']} bilan oyin boshlanadi!\nMavzu: {duel['topic']}\n\n1-soz: {word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)"
     )
     asyncio.create_task(duel_timeout(duel_id, 0))
 
@@ -432,7 +398,18 @@ async def handle_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    if data.startswith("level_"):
+    # VOICE TRANSLATE
+    if data.startswith("voice_translate_"):
+        target_id = int(data.replace("voice_translate_", ""))
+        text = voice_texts.get(target_id)
+        if text:
+            translated = GoogleTranslator(source='en', target='uz').translate(text)
+            await callback.message.answer(f"Ozbekcha tarjimasi:\n{translated}")
+        else:
+            await callback.message.answer("Matn topilmadi, qaytadan ovoz yuboring!")
+
+    # FLASHCARD
+    elif data.startswith("level_"):
         level = data.replace("level_", "")
         level_names = {"easy": "Oson", "medium": "Orta", "hard": "Qiyin"}
         await callback.message.answer("AI soz tayyorlanmoqda...")
@@ -442,11 +419,10 @@ async def handle_callback(callback: types.CallbackQuery):
         if user_id not in user_scores:
             user_scores[user_id] = {"correct": 0, "wrong": 0}
         await callback.message.answer(
-            f"Daraja: {level_names[level]}\n\n"
-            f"Inglizcha soz: {word['en']}\n\n"
-            f"Ozbekcha tarjimasini yozing:"
+            f"Daraja: {level_names[level]}\n\nInglizcha soz: {word['en']}\n\nOzbekcha tarjimasini yozing:"
         )
 
+    # DUEL MODE
     elif data == "duel_mode_friend":
         await show_duel_topics(callback.message)
 
@@ -458,10 +434,7 @@ async def handle_callback(callback: types.CallbackQuery):
             await show_duel_topics_search(callback.message, opponent_id)
         else:
             waiting_queue.append(user_id)
-            await callback.message.answer(
-                "Raqib qidirilmoqda...\n\n"
-                f"Guruhimizga havola tashlang!\n{GROUP_LINK}"
-            )
+            await callback.message.answer(f"Raqib qidirilmoqda...\n\nGuruhimizga havola tashlang!\n{GROUP_LINK}")
 
     elif data.startswith("duelsearch_"):
         parts = data.replace("duelsearch_", "").rsplit("_", 1)
@@ -472,18 +445,11 @@ async def handle_callback(callback: types.CallbackQuery):
         random.shuffle(words)
         duel_id = str(uuid.uuid4())[:8]
         active_duels[duel_id] = {
-            "player1_id": opponent_id,
-            "player1_name": "Raqib",
-            "player2_id": user_id,
-            "player2_name": callback.from_user.first_name,
-            "topic": topic,
-            "words": words,
-            "score1": 0,
-            "score2": 0,
-            "current_word": 0,
-            "p1_answered": False,
-            "p2_answered": False,
-            "status": "active"
+            "player1_id": opponent_id, "player1_name": "Raqib",
+            "player2_id": user_id, "player2_name": callback.from_user.first_name,
+            "topic": topic, "words": words,
+            "score1": 0, "score2": 0, "current_word": 0,
+            "p1_answered": False, "p2_answered": False, "status": "active"
         }
         user_duel[user_id] = duel_id
         user_duel[opponent_id] = duel_id
@@ -499,30 +465,20 @@ async def handle_callback(callback: types.CallbackQuery):
         random.shuffle(words)
         duel_id = str(uuid.uuid4())[:8]
         active_duels[duel_id] = {
-            "player1_id": user_id,
-            "player1_name": callback.from_user.first_name,
-            "player2_id": None,
-            "player2_name": None,
-            "topic": topic,
-            "words": words,
-            "score1": 0,
-            "score2": 0,
-            "current_word": 0,
-            "p1_answered": False,
-            "p2_answered": False,
-            "status": "waiting"
+            "player1_id": user_id, "player1_name": callback.from_user.first_name,
+            "player2_id": None, "player2_name": None,
+            "topic": topic, "words": words,
+            "score1": 0, "score2": 0, "current_word": 0,
+            "p1_answered": False, "p2_answered": False, "status": "waiting"
         }
         user_duel[user_id] = duel_id
         bot_info = await bot.get_me()
         link = f"https://t.me/{bot_info.username}?start=duel_{duel_id}"
         await callback.message.answer(
-            f"Mavzu: {topic}\n\n"
-            f"Dustingizga yoki guruhga quyidagi havolani yuboring:\n\n"
-            f"{link}\n\n"
-            f"Guruhimiz: {GROUP_LINK}\n\n"
-            f"Dustingiz qoshilishini kuting..."
+            f"Mavzu: {topic}\n\nDustingizga yoki guruhga quyidagi havolani yuboring:\n\n{link}\n\nGuruhimiz: {GROUP_LINK}\n\nDustingiz qoshilishini kuting..."
         )
 
+    # LEARN LEVEL
     elif data.startswith("learn_level_"):
         level = data.replace("learn_level_", "")
         level_names = {"beginner": "Boshlangich", "intermediate": "Orta", "advanced": "Yuqori"}
@@ -565,6 +521,7 @@ async def handle_callback(callback: types.CallbackQuery):
             ])
         )
 
+    # LEARN TOPIC
     elif data.startswith("learn_topic_"):
         topic = data.replace("learn_topic_", "").replace("_", " ")
         if user_id not in learn_sessions:
@@ -576,15 +533,10 @@ async def handle_callback(callback: types.CallbackQuery):
         if not questions:
             await callback.message.answer("Xatolik! Qaytadan urinib koring.")
             return
-        learn_sessions[user_id] = {
-            "level": level,
-            "topic": topic,
-            "questions": questions,
-            "current": 0,
-            "score": 0
-        }
+        learn_sessions[user_id] = {"level": level, "topic": topic, "questions": questions, "current": 0, "score": 0}
         await send_learn_question(callback.message, user_id)
 
+    # LEARN ANSWER
     elif data.startswith("learn_answer_"):
         answer = data.replace("learn_answer_", "")
         if user_id not in learn_sessions or "questions" not in learn_sessions[user_id]:
@@ -698,16 +650,13 @@ async def handle_message(message: types.Message):
             answer = text.lower().strip()
             is_player1 = duel["player1_id"] == user_id
             already_answered = duel["p1_answered"] if is_player1 else duel["p2_answered"]
-
             if already_answered:
                 await message.answer("Siz allaqachon javob berdingiz, sherigingizni kuting!")
                 return
-
             if is_player1:
                 duel["p1_answered"] = True
             else:
                 duel["p2_answered"] = True
-
             if answer == correct:
                 if is_player1:
                     duel["score1"] += 1
@@ -716,7 +665,6 @@ async def handle_message(message: types.Message):
                 await message.answer("Togri!")
             else:
                 await message.answer(f"Notogri! Togri javob: {correct}")
-
             if duel["p1_answered"] and duel["p2_answered"]:
                 duel["current_word"] += 1
                 duel["p1_answered"] = False
