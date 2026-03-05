@@ -5,7 +5,7 @@ import random
 import uuid
 import json
 from datetime import datetime
-from aiogram import Bot, Dispatcher, types
+from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from gtts import gTTS
 from deep_translator import GoogleTranslator
@@ -13,7 +13,7 @@ from groq import Groq
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = "8460732938:AAEXxdsq7uzI9VwgKEIWCAbRUcwMw2crwaw"
-GROQ_KEY = "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"
+GROQ_KEY = "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"
 ADMIN_ID = 6202785302
 CHANNEL_ID = "@DailyIdiomsUz"
 GROUP_LINK = "https://t.me/enlish_helper_bot_group"
@@ -43,6 +43,14 @@ def get_all_users():
     conn.close()
     return users
 
+def get_users_count():
+    conn = sqlite3.connect('users.db')
+    c = conn.cursor()
+    c.execute('SELECT COUNT(*) FROM users')
+    count = c.fetchone()[0]
+    conn.close()
+    return count
+
 # ==================== BOT ====================
 groq_client = Groq(api_key=GROQ_KEY)
 bot = Bot(token=BOT_TOKEN)
@@ -55,7 +63,6 @@ active_duels = {}
 user_duel = {}
 waiting_queue = []
 learn_sessions = {}
-duel_timers = {}
 
 # ==================== AI ====================
 def ask_ai(prompt):
@@ -65,6 +72,15 @@ def ask_ai(prompt):
         max_tokens=800
     )
     return response.choices[0].message.content
+
+def transcribe_audio(file_path):
+    with open(file_path, "rb") as audio_file:
+        transcription = groq_client.audio.transcriptions.create(
+            model="whisper-large-v3",
+            file=audio_file,
+            response_format="text"
+        )
+    return transcription
 
 def get_duel_words_ai(topic):
     prompt = (
@@ -137,11 +153,14 @@ async def start(message: types.Message):
 
     save_user(message.from_user.id, message.from_user.full_name, message.from_user.username)
     name = message.from_user.first_name
+    count = get_users_count()
     await message.answer(
         f"Salom, {name}!\n\n"
+        f"Bizda {count} ta foydalanuvchi bor!\n\n"
         "Men ingliz tili organishga yordam beraman!\n\n"
         "Imkoniyatlarim:\n"
         "/translate - Tarjima + audio\n"
+        "/voice - Ovozli xabarni matnga\n"
         "/topic - AI mavzu malumoti\n"
         "/wordofday - Kunlik yangi soz\n"
         "/flashcard - Soz oyini (AI)\n"
@@ -157,6 +176,7 @@ async def help_cmd(message: types.Message):
     await message.answer(
         "Yordam:\n\n"
         "/translate - Tarjima + audio\n"
+        "/voice - Ovozli xabarni matnga aylantirish\n"
         "/topic - AI mavzu malumoti\n"
         "/wordofday - Kunlik yangi soz\n"
         "/flashcard - Soz oyini (AI)\n"
@@ -164,6 +184,37 @@ async def help_cmd(message: types.Message):
         "/learn - Ingliz tili darslari + test\n\n"
         f"Guruhimiz: {GROUP_LINK}"
     )
+
+# ==================== /voice ====================
+@dp.message(Command("voice"))
+async def voice_start(message: types.Message):
+    user_states[message.from_user.id] = "waiting_voice"
+    await message.answer("Inglizcha ovozli xabar yuboring, matnga aylantirib beraman!")
+
+# ==================== OVOZLI XABAR ====================
+@dp.message(F.voice)
+async def handle_voice(message: types.Message):
+    await message.answer("Ovoz qabul qilindi, tahlil qilinmoqda...")
+    try:
+        voice = message.voice
+        file = await bot.get_file(voice.file_id)
+        file_path = f"voice_{message.from_user.id}.ogg"
+        await bot.download_file(file.file_path, file_path)
+
+        text = transcribe_audio(file_path)
+        os.remove(file_path)
+
+        if text:
+            translated = GoogleTranslator(source='en', target='uz').translate(text)
+            await message.answer(
+                f"Inglizcha matni:\n{text}\n\n"
+                f"Ozbekcha tarjimasi:\n{translated}"
+            )
+        else:
+            await message.answer("Ovoz aniqlanmadi, qaytadan urinib koring!")
+
+    except Exception as e:
+        await message.answer(f"Xatolik: {str(e)}")
 
 # ==================== /translate ====================
 @dp.message(Command("translate"))
@@ -314,7 +365,6 @@ async def finish_duel(duel_id):
     except:
         pass
 
-    # Kanalga post
     try:
         bot_info = await bot.get_me()
         channel_text = (
@@ -382,7 +432,6 @@ async def handle_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    # FLASHCARD
     if data.startswith("level_"):
         level = data.replace("level_", "")
         level_names = {"easy": "Oson", "medium": "Orta", "hard": "Qiyin"}
@@ -398,9 +447,7 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Ozbekcha tarjimasini yozing:"
         )
 
-    # DUEL MODE
     elif data == "duel_mode_friend":
-        user_states[user_id] = "duel_friend"
         await show_duel_topics(callback.message)
 
     elif data == "duel_mode_search":
@@ -408,17 +455,14 @@ async def handle_callback(callback: types.CallbackQuery):
             await callback.message.answer("Siz allaqachon qidiryapsiz, kuting...")
         elif waiting_queue:
             opponent_id = waiting_queue.pop(0)
-            await callback.message.answer("Raqib topildi! Mavzu tanlang:")
             await show_duel_topics_search(callback.message, opponent_id)
         else:
             waiting_queue.append(user_id)
             await callback.message.answer(
                 "Raqib qidirilmoqda...\n\n"
-                f"Guruhimizga havola tashlang, kimdir /duel bosib 'Raqib qidirish' tanlasa birlashtiradi!\n\n"
-                f"Guruh: {GROUP_LINK}"
+                f"Guruhimizga havola tashlang!\n{GROUP_LINK}"
             )
 
-    # DUEL SEARCH TOPIC
     elif data.startswith("duelsearch_"):
         parts = data.replace("duelsearch_", "").rsplit("_", 1)
         topic = parts[0]
@@ -444,20 +488,10 @@ async def handle_callback(callback: types.CallbackQuery):
         user_duel[user_id] = duel_id
         user_duel[opponent_id] = duel_id
         word = words[0]
-        await bot.send_message(
-            opponent_id,
-            f"Raqib topildi! Mavzu: {topic}\n\n"
-            f"1-soz: {word['en']}\n"
-            f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
-        )
-        await callback.message.answer(
-            f"Oyin boshlanadi! Mavzu: {topic}\n\n"
-            f"1-soz: {word['en']}\n"
-            f"Ozbekcha tarjimasini yozing:\n(20 soniya)"
-        )
+        await bot.send_message(opponent_id, f"Raqib topildi! Mavzu: {topic}\n\n1-soz: {word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
+        await callback.message.answer(f"Oyin boshlanadi! Mavzu: {topic}\n\n1-soz: {word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
         asyncio.create_task(duel_timeout(duel_id, 0))
 
-    # DUEL TOPIC (friend)
     elif data.startswith("dueltopic_"):
         topic = data.replace("dueltopic_", "")
         await callback.message.answer(f"AI {topic} mavzusidan sozlar tayyorlanmoqda...")
@@ -489,7 +523,6 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Dustingiz qoshilishini kuting..."
         )
 
-    # LEARN LEVEL
     elif data.startswith("learn_level_"):
         level = data.replace("learn_level_", "")
         level_names = {"beginner": "Boshlangich", "intermediate": "Orta", "advanced": "Yuqori"}
@@ -532,7 +565,6 @@ async def handle_callback(callback: types.CallbackQuery):
             ])
         )
 
-    # LEARN TOPIC
     elif data.startswith("learn_topic_"):
         topic = data.replace("learn_topic_", "").replace("_", " ")
         if user_id not in learn_sessions:
@@ -553,7 +585,6 @@ async def handle_callback(callback: types.CallbackQuery):
         }
         await send_learn_question(callback.message, user_id)
 
-    # LEARN ANSWER
     elif data.startswith("learn_answer_"):
         answer = data.replace("learn_answer_", "")
         if user_id not in learn_sessions or "questions" not in learn_sessions[user_id]:
@@ -577,10 +608,7 @@ async def handle_callback(callback: types.CallbackQuery):
                 result_text = f"Yaxshi! {score}/{total} - Davom eting!"
             else:
                 result_text = f"{score}/{total} - Koproq mashq qiling!"
-            await callback.message.answer(
-                f"Test tugadi!\n\n{result_text}\n\n"
-                f"Yana sinash uchun /learn bosing!"
-            )
+            await callback.message.answer(f"Test tugadi!\n\n{result_text}\n\nYana sinash uchun /learn bosing!")
             del learn_sessions[user_id]
         else:
             await send_learn_question(callback.message, user_id)
@@ -653,10 +681,7 @@ async def send_learn_question(message, user_id):
         [types.InlineKeyboardButton(text=options[2], callback_data=f"learn_answer_{options[2]}")],
         [types.InlineKeyboardButton(text=options[3], callback_data=f"learn_answer_{options[3]}")],
     ])
-    await message.answer(
-        f"Savol {num}/{total}:\n\n{q['question']}",
-        reply_markup=kb
-    )
+    await message.answer(f"Savol {num}/{total}:\n\n{q['question']}", reply_markup=kb)
 
 # ==================== XABARLAR ====================
 @dp.message()
@@ -664,7 +689,6 @@ async def handle_message(message: types.Message):
     text = message.text
     user_id = message.from_user.id
     try:
-        # DUEL
         if user_id in user_duel and active_duels.get(user_duel[user_id], {}).get("status") == "active":
             duel_id = user_duel[user_id]
             duel = active_duels[duel_id]
@@ -697,7 +721,6 @@ async def handle_message(message: types.Message):
                 duel["current_word"] += 1
                 duel["p1_answered"] = False
                 duel["p2_answered"] = False
-
                 if duel["current_word"] >= len(duel["words"]):
                     await finish_duel(duel_id)
                 else:
@@ -707,7 +730,6 @@ async def handle_message(message: types.Message):
                     await bot.send_message(duel["player2_id"], f"{num}-soz: {next_word['en']}\nOzbekcha tarjimasini yozing:\n(20 soniya)")
                     asyncio.create_task(duel_timeout(duel_id, duel["current_word"]))
 
-        # FLASHCARD
         elif user_states.get(user_id, "").startswith("waiting_flashcard"):
             user_states[user_id] = None
             word = user_current_word.get(user_id)
@@ -716,21 +738,12 @@ async def handle_message(message: types.Message):
             if user_answer == correct_answer:
                 user_scores[user_id]["correct"] += 1
                 score = user_scores[user_id]
-                await message.answer(
-                    f"Togri! Barakalla!\n\n"
-                    f"Natija: {score['correct']} togri | {score['wrong']} notogri\n\n"
-                    f"Davom etish uchun /flashcard bosing!"
-                )
+                await message.answer(f"Togri! Barakalla!\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun /flashcard bosing!")
             else:
                 user_scores[user_id]["wrong"] += 1
                 score = user_scores[user_id]
-                await message.answer(
-                    f"Notogri!\n\nTogri javob: {correct_answer}\n\n"
-                    f"Natija: {score['correct']} togri | {score['wrong']} notogri\n\n"
-                    f"Davom etish uchun /flashcard bosing!"
-                )
+                await message.answer(f"Notogri!\n\nTogri javob: {correct_answer}\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun /flashcard bosing!")
 
-        # TOPIC
         elif user_states.get(user_id) == "waiting_topic":
             user_states[user_id] = None
             await message.answer("AI javob tayyorlanmoqda...")
@@ -741,7 +754,6 @@ async def handle_message(message: types.Message):
             )
             await message.answer(f"{text.upper()} haqida:\n\n{result}")
 
-        # TRANSLATE
         else:
             detected = GoogleTranslator(source='auto', target='en').translate(text)
             if detected.lower() != text.lower():
@@ -765,6 +777,7 @@ async def main():
     await bot.set_my_commands([
         types.BotCommand(command="start", description="Botni boshlash"),
         types.BotCommand(command="translate", description="Tarjima + audio"),
+        types.BotCommand(command="voice", description="Ovozli xabarni matnga aylantirish"),
         types.BotCommand(command="topic", description="AI mavzu malumoti"),
         types.BotCommand(command="wordofday", description="Kunlik yangi soz"),
         types.BotCommand(command="flashcard", description="Soz oyini (AI)"),
