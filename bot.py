@@ -18,6 +18,29 @@ ADMIN_ID = 6202785302
 CHANNEL_ID = "@DailyIdiomsUz"
 GROUP_LINK = "https://t.me/enlish_helper_bot_group"
 
+# ==================== KEYBOARD ====================
+def main_keyboard():
+    return types.ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                types.KeyboardButton(text="🔤 Tarjima"),
+                types.KeyboardButton(text="🎤 Ovoz"),
+            ],
+            [
+                types.KeyboardButton(text="📅 Kunlik so'z"),
+                types.KeyboardButton(text="🃏 Flashcard"),
+            ],
+            [
+                types.KeyboardButton(text="⚔️ Duel"),
+                types.KeyboardButton(text="📚 Darslar"),
+            ],
+            [
+                types.KeyboardButton(text="❓ Yordam"),
+            ],
+        ],
+        resize_keyboard=True
+    )
+
 # ==================== DATABASE ====================
 def init_db():
     conn = sqlite3.connect('users.db')
@@ -149,79 +172,107 @@ async def start(message: types.Message):
     await message.answer(
         f"Salom, {name}!\n\n"
         "Men ingliz tili organishga yordam beraman!\n\n"
-        "Imkoniyatlarim:\n"
-        "/translate - Tarjima + audio\n"
-        "/voice - Ovozli xabarni matnga\n"
-        "/topic - AI mavzu malumoti\n"
-        "/wordofday - Kunlik yangi soz\n"
-        "/flashcard - Soz oyini (AI)\n"
-        "/duel - Dust bilan bellashuv\n"
-        "/learn - Ingliz tili darslari\n"
-        "/help - Yordam\n\n"
-        f"Guruhimizga qoshiling: {GROUP_LINK}"
+        "Quyidagi tugmalardan foydalaning!\n\n"
+        f"Guruhimizga qoshiling: {GROUP_LINK}",
+        reply_markup=main_keyboard()
     )
 
-# ==================== /help ====================
+# ==================== TUGMALAR ====================
+@dp.message(F.text == "🔤 Tarjima")
+async def btn_translate(message: types.Message):
+    user_states[message.from_user.id] = "waiting_translate"
+    await message.answer("Inglizcha yoki ozbekcha soz yuboring:")
+
+@dp.message(F.text == "🎤 Ovoz")
+async def btn_voice(message: types.Message):
+    user_states[message.from_user.id] = "waiting_voice"
+    await message.answer("Inglizcha ovozli xabar yuboring, matnga aylantirib beraman!")
+
+@dp.message(F.text == "📅 Kunlik so'z")
+async def btn_wordofday(message: types.Message):
+    await message.answer("Kunlik soz tayyorlanmoqda...")
+    try:
+        result = get_word_of_day_ai()
+        today = datetime.now().strftime("%d.%m.%Y")
+        await message.answer(f"Bugungi soz ({today}):\n\n{result}")
+    except Exception as e:
+        await message.answer(f"Xatolik: {str(e)}")
+
+@dp.message(F.text == "🃏 Flashcard")
+async def btn_flashcard(message: types.Message):
+    user_states[message.from_user.id] = None
+    await message.answer(
+        "Qaysi darajani tanlaysiz?",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="Oson", callback_data="level_easy"),
+                types.InlineKeyboardButton(text="Orta", callback_data="level_medium"),
+                types.InlineKeyboardButton(text="Qiyin", callback_data="level_hard"),
+            ]
+        ])
+    )
+
+@dp.message(F.text == "⚔️ Duel")
+async def btn_duel(message: types.Message):
+    await message.answer(
+        "Qanday oynashni xohlaysiz?",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="Dust bilan (havola)", callback_data="duel_mode_friend")],
+            [types.InlineKeyboardButton(text="Raqib qidirish", callback_data="duel_mode_search")],
+        ])
+    )
+
+@dp.message(F.text == "📚 Darslar")
+async def btn_learn(message: types.Message):
+    await message.answer(
+        "Ingliz tili darajangizni tanlang:",
+        reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+            [
+                types.InlineKeyboardButton(text="Boshlangich", callback_data="learn_level_beginner"),
+                types.InlineKeyboardButton(text="Orta", callback_data="learn_level_intermediate"),
+                types.InlineKeyboardButton(text="Yuqori", callback_data="learn_level_advanced"),
+            ]
+        ])
+    )
+
+@dp.message(F.text == "❓ Yordam")
+async def btn_help(message: types.Message):
+    await message.answer(
+        "Yordam:\n\n"
+        "🔤 Tarjima - Inglizcha/ozbekcha tarjima + audio\n"
+        "🎤 Ovoz - Ovozli xabarni matnga aylantirish\n"
+        "📅 Kunlik soz - Har kuni yangi soz\n"
+        "🃏 Flashcard - Soz oyini (AI)\n"
+        "⚔️ Duel - Dust bilan bellashuv\n"
+        "📚 Darslar - Ingliz tili darslari + test\n\n"
+        f"Guruhimiz: {GROUP_LINK}"
+    )
+
+# ==================== COMMANDLAR ====================
 @dp.message(Command("help"))
 async def help_cmd(message: types.Message):
     await message.answer(
         "Yordam:\n\n"
-        "/translate - Tarjima + audio\n"
-        "/voice - Ovozli xabarni matnga aylantirish\n"
-        "/topic - AI mavzu malumoti\n"
-        "/wordofday - Kunlik yangi soz\n"
-        "/flashcard - Soz oyini (AI)\n"
-        "/duel - Dust bilan bellashuv\n"
-        "/learn - Ingliz tili darslari + test\n\n"
-        f"Guruhimiz: {GROUP_LINK}"
+        "🔤 Tarjima - Inglizcha/ozbekcha tarjima + audio\n"
+        "🎤 Ovoz - Ovozli xabarni matnga aylantirish\n"
+        "📅 Kunlik soz - Har kuni yangi soz\n"
+        "🃏 Flashcard - Soz oyini (AI)\n"
+        "⚔️ Duel - Dust bilan bellashuv\n"
+        "📚 Darslar - Ingliz tili darslari + test\n\n"
+        f"Guruhimiz: {GROUP_LINK}",
+        reply_markup=main_keyboard()
     )
 
-# ==================== /voice ====================
-@dp.message(Command("voice"))
-async def voice_start(message: types.Message):
-    user_states[message.from_user.id] = "waiting_voice"
-    await message.answer("Inglizcha ovozli xabar yuboring, matnga aylantirib beraman!")
-
-# ==================== OVOZLI XABAR ====================
-@dp.message(F.voice)
-async def handle_voice(message: types.Message):
-    await message.answer("Ovoz qabul qilindi, tahlil qilinmoqda...")
-    try:
-        voice = message.voice
-        file = await bot.get_file(voice.file_id)
-        file_path = f"voice_{message.from_user.id}.ogg"
-        await bot.download_file(file.file_path, file_path)
-
-        text = transcribe_audio(file_path)
-        os.remove(file_path)
-
-        if text:
-            voice_texts[message.from_user.id] = text
-            await message.answer(
-                f"Inglizcha matni:\n{text}",
-                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text="Tarjimasi", callback_data=f"voice_translate_{message.from_user.id}")]
-                ])
-            )
-        else:
-            await message.answer("Ovoz aniqlanmadi, qaytadan urinib koring!")
-
-    except Exception as e:
-        await message.answer(f"Xatolik: {str(e)}")
-
-# ==================== /translate ====================
 @dp.message(Command("translate"))
 async def translate_start(message: types.Message):
     user_states[message.from_user.id] = "waiting_translate"
     await message.answer("Inglizcha yoki ozbekcha soz yuboring:")
 
-# ==================== /topic ====================
 @dp.message(Command("topic"))
 async def topic_start(message: types.Message):
     user_states[message.from_user.id] = "waiting_topic"
     await message.answer("Qaysi mavzuda inglizcha malumot olmoqchisiz?\n\nMasalan: sport, food, technology")
 
-# ==================== /wordofday ====================
 @dp.message(Command("wordofday"))
 async def word_of_day(message: types.Message):
     await message.answer("Kunlik soz tayyorlanmoqda...")
@@ -232,7 +283,11 @@ async def word_of_day(message: types.Message):
     except Exception as e:
         await message.answer(f"Xatolik: {str(e)}")
 
-# ==================== /users ====================
+@dp.message(Command("voice"))
+async def voice_start(message: types.Message):
+    user_states[message.from_user.id] = "waiting_voice"
+    await message.answer("Inglizcha ovozli xabar yuboring, matnga aylantirib beraman!")
+
 @dp.message(Command("users"))
 async def show_users(message: types.Message):
     if message.from_user.id != ADMIN_ID:
@@ -247,7 +302,6 @@ async def show_users(message: types.Message):
         text += f"Ism: {user[1]}\nUsername: @{user[2]}\nID: {user[0]}\n\n"
     await message.answer(text)
 
-# ==================== /flashcard ====================
 @dp.message(Command("flashcard"))
 async def flashcard_start(message: types.Message):
     user_states[message.from_user.id] = None
@@ -262,7 +316,6 @@ async def flashcard_start(message: types.Message):
         ])
     )
 
-# ==================== /learn ====================
 @dp.message(Command("learn"))
 async def learn_start(message: types.Message):
     await message.answer(
@@ -276,7 +329,6 @@ async def learn_start(message: types.Message):
         ])
     )
 
-# ==================== /duel ====================
 @dp.message(Command("duel"))
 async def duel_start(message: types.Message):
     await message.answer(
@@ -287,7 +339,31 @@ async def duel_start(message: types.Message):
         ])
     )
 
-# ==================== DUEL TIMER ====================
+# ==================== OVOZLI XABAR ====================
+@dp.message(F.voice)
+async def handle_voice(message: types.Message):
+    await message.answer("Ovoz qabul qilindi, tahlil qilinmoqda...")
+    try:
+        voice = message.voice
+        file = await bot.get_file(voice.file_id)
+        file_path = f"voice_{message.from_user.id}.ogg"
+        await bot.download_file(file.file_path, file_path)
+        text = transcribe_audio(file_path)
+        os.remove(file_path)
+        if text:
+            voice_texts[message.from_user.id] = text
+            await message.answer(
+                f"Inglizcha matni:\n{text}",
+                reply_markup=types.InlineKeyboardMarkup(inline_keyboard=[
+                    [types.InlineKeyboardButton(text="Tarjimasi", callback_data=f"voice_translate_{message.from_user.id}")]
+                ])
+            )
+        else:
+            await message.answer("Ovoz aniqlanmadi, qaytadan urinib koring!")
+    except Exception as e:
+        await message.answer(f"Xatolik: {str(e)}")
+
+# ==================== DUEL FUNKSIYALAR ====================
 async def duel_timeout(duel_id, word_index):
     await asyncio.sleep(20)
     if duel_id not in active_duels:
@@ -398,7 +474,6 @@ async def handle_callback(callback: types.CallbackQuery):
     user_id = callback.from_user.id
     data = callback.data
 
-    # VOICE TRANSLATE
     if data.startswith("voice_translate_"):
         target_id = int(data.replace("voice_translate_", ""))
         text = voice_texts.get(target_id)
@@ -408,7 +483,6 @@ async def handle_callback(callback: types.CallbackQuery):
         else:
             await callback.message.answer("Matn topilmadi, qaytadan ovoz yuboring!")
 
-    # FLASHCARD
     elif data.startswith("level_"):
         level = data.replace("level_", "")
         level_names = {"easy": "Oson", "medium": "Orta", "hard": "Qiyin"}
@@ -422,7 +496,6 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Daraja: {level_names[level]}\n\nInglizcha soz: {word['en']}\n\nOzbekcha tarjimasini yozing:"
         )
 
-    # DUEL MODE
     elif data == "duel_mode_friend":
         await show_duel_topics(callback.message)
 
@@ -478,7 +551,6 @@ async def handle_callback(callback: types.CallbackQuery):
             f"Mavzu: {topic}\n\nDustingizga yoki guruhga quyidagi havolani yuboring:\n\n{link}\n\nGuruhimiz: {GROUP_LINK}\n\nDustingiz qoshilishini kuting..."
         )
 
-    # LEARN LEVEL
     elif data.startswith("learn_level_"):
         level = data.replace("learn_level_", "")
         level_names = {"beginner": "Boshlangich", "intermediate": "Orta", "advanced": "Yuqori"}
@@ -521,7 +593,6 @@ async def handle_callback(callback: types.CallbackQuery):
             ])
         )
 
-    # LEARN TOPIC
     elif data.startswith("learn_topic_"):
         topic = data.replace("learn_topic_", "").replace("_", " ")
         if user_id not in learn_sessions:
@@ -536,7 +607,6 @@ async def handle_callback(callback: types.CallbackQuery):
         learn_sessions[user_id] = {"level": level, "topic": topic, "questions": questions, "current": 0, "score": 0}
         await send_learn_question(callback.message, user_id)
 
-    # LEARN ANSWER
     elif data.startswith("learn_answer_"):
         answer = data.replace("learn_answer_", "")
         if user_id not in learn_sessions or "questions" not in learn_sessions[user_id]:
@@ -560,7 +630,7 @@ async def handle_callback(callback: types.CallbackQuery):
                 result_text = f"Yaxshi! {score}/{total} - Davom eting!"
             else:
                 result_text = f"{score}/{total} - Koproq mashq qiling!"
-            await callback.message.answer(f"Test tugadi!\n\n{result_text}\n\nYana sinash uchun /learn bosing!")
+            await callback.message.answer(f"Test tugadi!\n\n{result_text}\n\nYana sinash uchun 📚 Darslar bosing!")
             del learn_sessions[user_id]
         else:
             await send_learn_question(callback.message, user_id)
@@ -686,11 +756,11 @@ async def handle_message(message: types.Message):
             if user_answer == correct_answer:
                 user_scores[user_id]["correct"] += 1
                 score = user_scores[user_id]
-                await message.answer(f"Togri! Barakalla!\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun /flashcard bosing!")
+                await message.answer(f"Togri! Barakalla!\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun 🃏 Flashcard bosing!")
             else:
                 user_scores[user_id]["wrong"] += 1
                 score = user_scores[user_id]
-                await message.answer(f"Notogri!\n\nTogri javob: {correct_answer}\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun /flashcard bosing!")
+                await message.answer(f"Notogri!\n\nTogri javob: {correct_answer}\n\nNatija: {score['correct']} togri | {score['wrong']} notogri\n\nDavom etish uchun 🃏 Flashcard bosing!")
 
         elif user_states.get(user_id) == "waiting_topic":
             user_states[user_id] = None
