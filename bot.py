@@ -13,7 +13,7 @@ from groq import Groq
 
 # ==================== SOZLAMALAR ====================
 BOT_TOKEN = "8460732938:AAEXxdsq7uzI9VwgKEIWCAbRUcwMw2crwaw"
-GROQ_KEY = "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"
+GROQ_KEY = "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"
 ADMIN_ID = 6202785302
 CHANNEL_ID = "@DailyIdiomsUz"
 GROUP_LINK = "https://t.me/enlish_helper_bot_group"
